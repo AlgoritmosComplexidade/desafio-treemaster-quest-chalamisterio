@@ -1,0 +1,223 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+// Estrutura para armazenar os dados do Documento
+typedef struct {
+    int id;
+    char titulo[101];
+    char autor[51];
+    int ano;
+} Documento;
+
+// Estrutura do Nó da Árvore Binária de Busca (ABB)
+typedef struct No {
+    Documento doc;
+    struct No *esquerda;
+    struct No *direita;
+} No;
+
+// Função para criar um novo nó
+No* criarNo(Documento novoDoc) {
+    No* novoNo = (No*)malloc(sizeof(No));
+    if (novoNo == NULL) {
+        printf("Erro: Falha na alocação de memória.\n");
+        exit(1);
+    }
+    novoNo->doc = novoDoc;
+    novoNo->esquerda = NULL;
+    novoNo->direita = NULL;
+    return novoNo;
+}
+
+// Função para inserir um documento na ABB
+No* inserir(No* raiz, Documento novoDoc) {
+    if (raiz == NULL) {
+        return criarNo(novoDoc);
+    }
+    if (novoDoc.id < raiz->doc.id) {
+        raiz->esquerda = inserir(raiz->esquerda, novoDoc);
+    } else if (novoDoc.id > raiz->doc.id) {
+        raiz->direita = inserir(raiz->direita, novoDoc);
+    } else {
+        printf("\n[Aviso] O ID %d ja existe. Documento nao inserido.\n", novoDoc.id);
+    }
+    return raiz;
+}
+
+// Função para calcular a altura da árvore
+int calcularAltura(No* raiz) {
+    if (raiz == NULL) {
+        return 0; // Árvore vazia tem altura 0
+    }
+    int altEsquerda = calcularAltura(raiz->esquerda);
+    int altDireita = calcularAltura(raiz->direita);
+    
+    return (altEsquerda > altDireita ? altEsquerda : altDireita) + 1;
+}
+
+// Rotação para a direita (usada na criação da espinha)
+void rotacionarDireita(No* pivo, No* filho) {
+    if (pivo == NULL || filho == NULL) return;
+    pivo->direita = filho->esquerda;
+    filho->esquerda = pivo;
+}
+
+// Rotação para a esquerda (usada no balanceamento da espinha)
+void rotacionarEsquerda(No* pivo, No* filho) {
+    if (pivo == NULL || filho == NULL) return;
+    pivo->direita = filho->direita;
+    filho->direita = pivo;
+}
+
+// Fase 1 do DSW: Transforma a árvore em uma espinha (Vine) alinhada à direita
+int criarEspinha(No* pseudoRaiz) {
+    No* atual = pseudoRaiz->direita;
+    int contagem = 0;
+
+    while (atual != NULL) {
+        if (atual->esquerda != NULL) {
+            No* filhoEsquerdo = atual->esquerda;
+            rotacionarDireita(atual, filhoEsquerdo);
+            pseudoRaiz->direita = filhoEsquerdo;
+            atual = filhoEsquerdo;
+        } else {
+            contagem++;
+            pseudoRaiz = atual;
+            atual = atual->direita;
+        }
+    }
+    return contagem;
+}
+
+// Realiza uma série de rotações para a esquerda na espinha
+void realizarRotacoes(No* pseudoRaiz, int quantidade) {
+    No* atual = pseudoRaiz->direita;
+    for (int i = 0; i < quantidade && atual != NULL; i++) {
+        No* filhoDireito = atual->direita;
+        rotacionarEsquerda(atual, filhoDireito);
+        pseudoRaiz->direita = filhoDireito;
+        pseudoRaiz = filhoDireito;
+        atual = pseudoRaiz->direita;
+    }
+}
+
+// Função principal do algoritmo DSW
+No* balancearDSW(No* raiz) {
+    if (raiz == NULL) return NULL;
+
+    // Criamos uma pseudo-raiz para gerenciar as rotações no topo da árvore
+    No* pseudoRaiz = (No*)malloc(sizeof(No));
+    pseudoRaiz->direita = raiz;
+    pseudoRaiz->esquerda = NULL;
+
+    // 1. Transforma em espinha e obtém o número total de nós (N)
+    int n = criarEspinha(pseudoRaiz);
+
+    // 2. Calcula as folhas da árvore perfeitamente balanceada
+    // m = 2^(chao(log2(n + 1))) - 1
+    int h = (int)(log2(n + 1));
+    int m = (int)pow(2, h) - 1;
+
+    // Rotações iniciais para isolar o excesso de nós que não completam o último nível
+    realizarRotacoes(pseudoRaiz, n - m);
+
+    // Rotações subsequentes dividindo m por 2 a cada passada
+    while (m > 1) {
+        m = m / 2;
+        realizarRotacoes(pseudoRaiz, m);
+    }
+
+    No* novaRaiz = pseudoRaiz->direita;
+    free(pseudoRaiz);
+    return novaRaiz;
+}
+
+// Função de percurso em-ordem
+void exibirEmOrdem(No* raiz) {
+    if (raiz != NULL) {
+        exibirEmOrdem(raiz->esquerda);
+        printf("ID: %4d | Titulo: %-25s | Autor: %-15s | Ano: %d\n", 
+               raiz->doc.id, raiz->doc.titulo, raiz->doc.autor, raiz->doc.ano);
+        exibirEmOrdem(raiz->direita);
+    }
+}
+
+// Função para liberar a memória da árvore
+void liberarArvore(No* raiz) {
+    if (raiz != NULL) {
+        liberinarArvore(raiz->esquerda);
+        liberarArvore(raiz->direita);
+        free(raiz);
+    }
+}
+
+void limparBuffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+void removerQuebraLinha(char* string) {
+    size_t tamanho = strlen(string);
+    if (tamanho > 0 && string[tamanho - 1] == '\n') {
+        string[tamanho - 1] = '\0';
+    }
+}
+
+int main() {
+    No* raiz = NULL;
+    Documento doc;
+    int alturaAntes, alturaDepois;
+
+    printf("--- Cadastro de Documentos (Biblioteca Digital) ---\n\n");
+
+    for (int i = 1; i <= 2; i++) {
+        printf("Digite os dados do %dº documento:\n", i);
+        
+        printf("ID: ");
+        scanf("%d", &doc.id);
+        limparBuffer();
+
+        printf("Titulo: ");
+        fgets(doc.titulo, sizeof(doc.titulo), stdin);
+        removerQuebraLinha(doc.titulo);
+
+        printf("Autor: ");
+        fgets(doc.autor, sizeof(doc.autor), stdin);
+        removerQuebraLinha(doc.autor);
+
+        printf("Ano de Publicacao: ");
+        scanf("%d", &doc.ano);
+        limparBuffer();
+
+        raiz = inserir(raiz, doc);
+        printf("-----------------------------------------\n");
+    }
+
+    // 2. Calcula a altura antes do balanceamento
+    alturaAntes = calcularAltura(raiz);
+
+    // 1. Aplica o Algoritmo DSW para balancear a árvore
+    raiz = balancearDSW(raiz);
+
+    // 2. Calcula a altura após o balanceamento
+    alturaDepois = calcularAltura(raiz);
+
+    // 3. Exibe os resultados formatados
+    printf("\n=================== RESULTADOS ===================\n");
+    printf("\n--- Documentos Armazenados (Percurso Em-Ordem) ---\n");
+    if (raiz == NULL) {
+        printf("Nenhum documento cadastrado.\n");
+    } else {
+        exibirEmOrdem(raiz);
+    }
+    
+    printf("\n--- Analise de Altura da Arvore ---\n");
+    printf("Altura ANTES do DSW (original):    %d\n", alturaAntes);
+    printf("Altura DEPOIS do DSW (balanceada): %d\n", alturaDepois);
+    printf("==================================================\n");
+
+    liberarArvore(raiz);
+    return 0;
+}
