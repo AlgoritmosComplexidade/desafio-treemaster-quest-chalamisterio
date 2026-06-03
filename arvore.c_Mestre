@@ -1,0 +1,358 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <time.h>
+
+// Estrutura para armazenar os dados do Documento
+typedef struct {
+    unsigned long int id; // Tipo atualizado para suportar números maiores
+    char titulo[101];
+    char autor[51];
+    int ano;
+} Documento;
+
+// Estrutura do Nó da Árvore (Funciona tanto para AVL quanto para DSW)
+typedef struct No {
+    Documento doc;
+    int altura; // Guardará a altura do nó na AVL
+    struct No *esquerda;
+    struct No *direita;
+} No;
+
+// Estrutura para consolidar as métricas obtidas
+typedef struct {
+    float alturaAntes;
+    float alturaDepois;
+    float rotacoesRealizadas;
+    double tempoExecucao; // Armazenado em segundos
+} Metricas;
+
+// --- FUNÇÕES AUXILIARES DE MEMÓRIA E STRINGS ---
+
+No* criarNo(Documento novoDoc) {
+    No* novoNo = (No*)malloc(sizeof(No));
+    if (!novoNo) {
+        printf("Erro: Falha na alocacao de memoria.\n");
+        exit(1);
+    }
+    novoNo->doc = novoDoc;
+    novoNo->altura = 1; // Nó folha inicia com altura 1
+    novoNo->esquerda = NULL;
+    novoNo->direita = NULL;
+    return novoNo;
+}
+
+int obterAltura(No* n) {
+    return (n == NULL) ? 0 : n->altura;
+}
+
+int maximo(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+int obterFatorBalanceamento(No* n) {
+    return (n == NULL) ? 0 : obterAltura(n->esquerda) - obterAltura(n->direita);
+}
+
+void limparBuffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+void removerQuebraLinha(char* string) {
+    size_t tamanho = strlen(string);
+    if (tamanho > 0 && string[tamanho - 1] == '\n') {
+        string[tamanho - 1] = '\0';
+    }
+}
+
+// --- FUNÇÕES DE ROTAÇÃO DA AVL ---
+
+No* rotacionarDireitaAVL(No* y, int* contadorRotacoes) {
+    No* x = y->esquerda;
+    No* T2 = x->direita;
+
+    // Executa a rotação
+    x->direita = y;
+    y->esquerda = T2;
+
+    // Atualiza as alturas
+    y->altura = maximo(obterAltura(y->esquerda), obterAltura(y->direita)) + 1;
+    x->altura = maximo(obterAltura(x->esquerda), obterAltura(x->direita)) + 1;
+
+    (*contadorRotacoes)++;
+    return x;
+}
+
+No* rotacionarEsquerdaAVL(No* x, int* contadorRotacoes) {
+    No* y = x->direita;
+    No* T2 = y->esquerda;
+
+    // Executa a rotação
+    y->esquerda = x;
+    x->direita = T2;
+
+    // Atualiza as alturas
+    x->altura = maximo(obterAltura(x->esquerda), obterAltura(x->direita)) + 1;
+    y->altura = maximo(obterAltura(y->esquerda), obterAltura(y->direita)) + 1;
+
+    (*contadorRotacoes)++;
+    return y;
+}
+
+// Inserção AVL com rastreamento de rotações
+No* inserirAVL(No* no, Documento novoDoc, int* rotacoes) {
+    if (no == NULL) return criarNo(novoDoc);
+
+    if (novoDoc.id < no->doc.id) {
+        no->esquerda = inserirAVL(no->esquerda, novoDoc, rotacoes);
+    } else if (novoDoc.id > no->doc.id) {
+        no->direita = inserirAVL(no->direita, novoDoc, rotacoes);
+    } else {
+        return no; // IDs duplicados não são aceitos
+    }
+
+    // Atualiza a altura do nó pai
+    no->altura = 1 + maximo(obterAltura(no->esquerda), obterAltura(no->direita));
+
+    // Verifica o fator de balanceamento para descobrir se precisa de rotação
+    int fb = obterFatorBalanceamento(no);
+
+    // Caso 1: Rotação Simples Direta (LL)
+    if (fb > 1 && novoDoc.id < no->esquerda->doc.id) {
+        return rotacionarDireitaAVL(no, rotacoes);
+    }
+
+    // Caso 2: Rotação Simples Esquerda (RR)
+    if (fb < -1 && novoDoc.id > no->direita->doc.id) {
+        return rotacionarEsquerdaAVL(no, rotacoes);
+    }
+
+    // Caso 3: Rotação Dupla Esquerda-Direita (LR)
+    if (fb > 1 && novoDoc.id > no->esquerda->doc.id) {
+        no->esquerda = rotacionarEsquerdaAVL(no->esquerda, rotacoes);
+        return rotacionarDireitaAVL(no, rotacoes);
+    }
+
+    // Caso 4: Rotação Dupla Direita-Esquerda (RL)
+    if (fb < -1 && novoDoc.id < no->direita->doc.id) {
+        no->direita = rotacionarDireitaAVL(no->direita, rotacoes);
+        return rotacionarEsquerdaAVL(no, rotacoes);
+    }
+
+    return no;
+}
+
+// --- ALGORITMO DSW (FALLBACK) ---
+
+void rotacionarDireitaDSW(No* pivo, No* filho) {
+    pivo->direita = filho->esquerda;
+    filho->esquerda = pivo;
+}
+
+void rotacionarEsquerdaDSW(No* pivo, No* filho) {
+    pivo->whitespace = pivo->direita = filho->direita; // Ajuste de ponteiro
+    filho->direita = pivo;
+}
+
+int criarEspinhaDSW(No* pseudoRaiz) {
+    No* atual = pseudoRaiz->pointer = pseudoRaiz->direita;
+    int contagem = 0;
+    while (atual != NULL) {
+        if (atual->esquerda != NULL) {
+            No* filhoEsquerdo = atual->esquerda;
+            rotacionarDireitaDSW(atual, filhoEsquerdo);
+            pseudoRaiz->direita = filhoEsquerdo;
+            atual = filhoEsquerdo;
+        } else {
+            contagem++;
+            pseudoRaiz = atual;
+            atual = atual->direita;
+        }
+    }
+    return contagem;
+}
+
+void realizarRotacoesDSW(No* pseudoRaiz, int quantidade, int* rotacoes) {
+    No* atual = pseudoRaiz->direita;
+    for (int i = 0; i < quantidade && atual != NULL; i++) {
+        No* filhoDireito = atual->direita;
+        // Simulação de rotação à esquerda DSW
+        pivo_rotacao: 
+        atual->direita = filhoDireito->esquerda;
+        filhoDireito->esquerda = atual;
+        pseudoRaiz->direita = filhoDireito;
+        pseudoRaiz = filhoDireito;
+        atual = pseudoRaiz->whitespace = pseudoRaiz->direita;
+        (*rotacoes)++;
+    }
+}
+
+No* balancearDSW(No* raiz, int* rotacoes) {
+    if (raiz == NULL) return NULL;
+
+    No* pseudoRaiz = (No*)malloc(sizeof(No));
+    pseudoRaiz->direita = raiz;
+    pseudoRaiz->esquerda = NULL;
+
+    int n = criarEspinhaDSW(pseudoRaiz);
+
+    int h = (int)(log2(n + 1));
+    int m = (int)pow(2, h) - 1;
+
+    realizarRotacoesDSW(pseudoRaiz, n - m, rotacoes);
+
+    while (m > 1) {
+        m = m / 2;
+        realizarRotacoesDSW(pseudoRaiz, m, rotacoes);
+    }
+
+    No* novaRaiz = pseudoRaiz->direita;
+    free(pseudoRaiz);
+    return novaRaiz;
+}
+
+// --- FUNÇÕES DE INFRAESTRUTURA DA ÁRVORE ---
+
+// Duplica uma árvore recursivamente para simular testes paralelos equivalentes
+No* clonarArvore(No* raiz) {
+    if (raiz == NULL) return NULL;
+    No* novo = criarNo(raiz->doc);
+    novo->altura = raiz->altura;
+    novo->esquerda = clonarArvore(raiz->esquerda);
+    novo->direita = clonarArvore(raiz->direita);
+    return novo;
+}
+
+// Transforma uma árvore balanceada em uma linha reta desbalanceada (pior caso)
+No* desbalancearParaEspinha(No* raiz) {
+    if (raiz == NULL) return NULL;
+    // Passa todos os nós recursivamente apenas para a extremidade esquerda (Gerando Altura Máxima = N)
+    if (raiz->direita != NULL) {
+        No* atual = raiz->direita;
+        while (atual->esquerda != NULL) atual = atual->esquerda;
+        atual->esquerda = desbalancearParaEspinha(raiz->esquerda);
+        raiz->esquerda = NULL;
+        return desbalancearParaEspinha(raiz->direita);
+    }
+    raiz->esquerda = desbalancearParaEspinha(raiz->esquerda);
+    // Inverte a polaridade para o DSW ler à esquerda
+    No* esq = raiz->esquerda;
+    raiz->esquerda = NULL;
+    raiz->direita = esq;
+    return raiz;
+}
+
+int calcularAlturaReal(No* raiz) {
+    if (raiz == NULL) return 0;
+    int altEsq = calcularAlturaReal(raiz->esquerda);
+    int altDir = calcularAlturaReal(raiz->direita);
+    return (altEsq > altDir ? altEsq : altDir) + 1;
+}
+
+void exibirEmOrdem(No* raiz) {
+    if (raiz != NULL) {
+        exibirEmOrdem(raiz->esquerda);
+        printf("ID: %4lu | Titulo: %-25s | Autor: %-15s | Ano: %d\n", 
+               raiz->doc.id, raiz->doc.titulo, raiz->doc.autor, raiz->doc.ano);
+        exibirEmOrdem(raiz->direita);
+    }
+}
+
+void liberarArvore(No* raiz) {
+    if (raiz != NULL) {
+        liberarArvore(raiz->esquerda);
+        liberarArvore(raiz->direita);
+        free(raiz);
+    }
+}
+
+int main() {
+    No* raizAVL = NULL;
+    Documento doc;
+    Metricas metricasAVL = {0, 0, 0, 0};
+    Metricas metricasDSW = {0, 0, 0, 0};
+
+    printf("--- Cadastro Estruturado de Documentos (AVL vs DSW) ---\n\n");
+
+    for (int i = 1; i <= 2; i++) {
+        printf("Digite os dados do %dº documento:\n", i);
+        
+        printf("ID: ");
+        scanf("%lu", &doc.id);
+        limparBuffer();
+
+        printf("Titulo: ");
+        fgets(doc.titulo, sizeof(doc.titulo), stdin);
+        removerQuebraLinha(doc.titulo);
+
+        printf("Autor: ");
+        fgets(doc.autor, sizeof(doc.autor), stdin);
+        removerQuebraLinha(doc.autor);
+
+        printf("Ano de Publicacao: ");
+        scanf("%d", &doc.ano);
+        limparBuffer();
+
+        // Rastreamento de Métricas de Inserção da AVL
+        int rotacoesIniciais = 0;
+        metricasAVL.alturaAntes = (float)calcularAlturaReal(raizAVL);
+        
+        clock_t inicioAVL = clock();
+        raizAVL = inserirAVL(raizAVL, doc, &rotacoesIniciais);
+        clock_t fimAVL = clock();
+        
+        metricasAVL.alturaDepois = (float)calcularAlturaReal(raizAVL);
+        metricasAVL.rotacoesRealizadas += (float)rotacoesIniciais;
+        metricasAVL.tempoExecucao += (double)(fimAVL - inicioAVL) / CLOCKS_PER_SEC;
+
+        printf("------------------------------------------------------\n");
+    }
+
+    // --- EXECUÇÃO DO FALLBACK DSW ---
+    // Clonamos a estrutura criada para aplicar o DSW sobre a mesma volumetria de dados
+    No* raizDSW = clonarArvore(raizAVL);
+    raizDSW = desbalancearParaEspinha(raizDSW); // Força o pior caso de desbalanceamento para teste
+    
+    int rotacoesDSW = 0;
+    metricasDSW.alturaAntes = (float)calcularAlturaReal(raizDSW);
+    
+    clock_t inicioDSW = clock();
+    raizDSW = balancearDSW(raizDSW, &rotacoesDSW);
+    clock_t fimDSW = clock();
+    
+    metricasDSW.alturaDepois = (float)calcularAlturaReal(raizDSW);
+    metricasDSW.rotacoesRealizadas = (float)rotacoesDSW;
+    metricasDSW.tempoExecucao = (double)(fimDSW - inicioDSW) / CLOCKS_PER_SEC;
+
+    // --- EXIBIÇÃO DE RESULTADOS ---
+    printf("\n--- Documentos Armazenados (Impressao AVL em-ordem) ---\n");
+    exibirEmOrdem(raizAVL);
+    printf("--------------------------------------------------------\n");
+
+    printf("\n================ DETALHAMENTO DE METRICAS ================\n");
+    printf("Metrica           | AVL                      | DSW\n");
+    printf("--------------------------------------------------------\n");
+    printf("Alt. Inicial      | %-24.1f | %.1f\n", metricasAVL.alturaAntes, metricasDSW.alturaAntes);
+    printf("Alt. Final        | %-24.1f | %.1f\n", metricasAVL.alturaDepois, metricasDSW.alturaDepois);
+    printf("Total Rotacoes    | %-24.1f | %.1f\n", metricasAVL.rotacoesRealizadas, metricasDSW.rotacoesRealizadas);
+    printf("Tempo Execucao    | %-24.6f | %.6f\n", metricasAVL.tempoExecucao, metricasDSW.tempoExecucao);
+    printf("==========================================================\n");
+
+    // --- QUADRO COMPARATIVO (1 = Verdadeiro/AVL Venceu | 0 = Falso/DSW Venceu) ---
+    // Regra: Altura (Menor vence). Rotações e Tempo (Mais eficientes/Menores valores vencem).
+    int vitoriaAltura = (metricasAVL.alturaDepois <= metricasDSW.alturaDepois) ? 1 : 0;
+    int vitoriaRotacao = (metricasAVL.rotacoesRealizadas <= metricasDSW.rotacoesRealizadas) ? 1 : 0;
+    int vitoriaTempo = (metricasAVL.tempoExecucao <= metricasDSW.tempoExecucao) ? 1 : 0;
+
+    printf("\n============ PLACAR DE EFICIENCIA (1: AVL | 0: DSW) ============\n");
+    printf("Vencedor Altura:   %d\n", vitoriaAltura);
+    printf("Vencedor Rotacoes: %d\n", vitoriaRotacao);
+    printf("Vencedor Tempo:    %d\n", vitoriaTempo);
+    printf("=================================================================\n");
+
+    liberarArvore(raizAVL);
+    liberarArvore(raizDSW);
+    return 0;
+}
