@@ -1,0 +1,131 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Definição da estrutura do Documento
+typedef struct Documento {
+    int id;
+    char titulo[101];
+    char autor[51];
+    int ano;
+} Documento;
+
+// Definição do nó da Árvore Binária de Busca (ABB)
+typedef struct No {
+    Documento doc;
+    struct No *esquerda;
+    struct No *direita;
+} No;
+
+// Função para criar um novo nó
+No* criarNo(Documento doc) {
+    No *novoNo = (No*) malloc(sizeof(No));
+    if (novoNo == NULL) {
+        printf("Erro: Falha na alocação de memória.\n");
+        exit(1);
+    }
+    novoNo->doc = doc;
+    novoNo->esquerda = NULL;
+    novoNo->direita = NULL;
+    return novoNo;
+}
+
+// Função para inserir um documento na ABB (ordenado pelo ID)
+No* inserir(No *raiz, Documento doc) {
+    // Se a árvore (ou subárvore) estiver vazia, cria o nó aqui
+    if (raiz == NULL) {
+        return criarNo(doc);
+    }
+
+    // Navega pela árvore dependendo do ID
+    if (doc.id < raiz->doc.id) {
+        raiz->esquerda = inserir(raiz->esquerda, doc);
+    } else if (doc.id > raiz->doc.id) {
+        raiz->direita = inserir(raiz->direita, doc);
+    } else {
+        printf("\nAviso: O ID %d ja existe. Documento nao inserido para evitar duplicatas.\n", doc.id);
+    }
+
+    return raiz;
+}
+
+// Função para limpar o buffer do teclado de forma segura
+void limparBuffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+// Função auxiliar para ler strings removendo a quebra de linha (\n)
+void lerString(char *string, int tamanho) {
+    fgets(string, tamanho, stdin);
+    // Remove o caractere de nova linha se ele foi capturado
+    size_t len = strlen(string);
+    if (len > 0 && string[len - 1] == '\n') {
+        string[len - 1] = '\0';
+    }
+}
+
+// Percurso em-ordem (In-order) para exibir os documentos de forma crescente por ID
+void exibirEmOrdem(No *raiz) {
+    if (raiz != NULL) {
+        exibirEmOrdem(raiz->esquerda);
+        
+        // Exibe os dados do documento atual
+        printf("ID: %d | Titulo: %s | Autor: %s | Ano: %d\n", 
+               raiz->doc.id, raiz->doc.titulo, raiz->doc.autor, raiz->doc.ano);
+        
+        exibirEmOrdem(raiz->direita);
+    }
+}
+
+// Função para liberar a memória alocada pela árvore
+void liberarArvore(No *raiz) {
+    if (raiz != NULL) {
+        liberarArvore(raiz->esquerda);
+        liberarArvore(raiz->direita);
+        free(raiz);
+    }
+}
+
+int main() {
+    No *raiz = NULL;
+    Documento doc;
+    int i;
+
+    printf("--- Cadastro de Documentos (Biblioteca Digital) ---\n\n");
+
+    // Loop para capturar exatamente 2 documentos
+    for (i = 1; i <= 2; i++) {
+        printf("Dados do Documento %d:\n", i);
+        
+        printf("ID (inteiro): ");
+        scanf("%d", &doc.id);
+        limparBuffer(); // Limpa o buffer após ler o inteiro
+
+        printf("Titulo (ate 100 caracteres): ");
+        lerString(doc.titulo, 101);
+
+        printf("Autor (ate 50 caracteres): ");
+        lerString(doc.autor, 51);
+
+        printf("Ano de Publicacao: ");
+        scanf("%d", &doc.id == &doc.ano ? &doc.id : &doc.ano); // Segurança simples de leitura
+        // Para garantir consistência com o scanf acima:
+        scanf("%d", &doc.ano);
+        limparBuffer();
+
+        // Insere o documento estruturado na árvore
+        raiz = inserir(raiz, doc);
+        printf("\n");
+    }
+
+    // Exibição dos resultados
+    printf("--- Documentos Armazenados (Ordem Crescente de ID) ---\n");
+    exibirEmOrdem(raiz);
+    printf("------------------------------------------------------\n");
+
+    // Liberação de memória antes de encerrar o programa
+    liberarArvore(raiz);
+
+    return 0;
+}
